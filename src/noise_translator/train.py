@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from tqdm import tqdm
 
-from noise_translator.data.data_loader import PairedNoisyDataset
+from noise_translator.data.data_loader import create_dataloader
 from noise_translator.models.models import DnCNN, PatchDiscriminator, SimpleUNet
 from noise_translator.utils.utils import save_sample_grid, weights_init
 
@@ -137,14 +137,16 @@ def train_translator(
 
 
 def run(
-    data_dir: Path = Path("data"), device_str: str = "cuda", epochs_denoiser: int = 10, epochs_translator: int = 10
+    data_dir: Path = Path("data"),
+    device_str: str = "cuda",
+    crop_size: tuple[int, int] | None = None,
+    epochs_denoiser: int = 10,
+    epochs_translator: int = 10,
 ) -> None:
     device = torch.device(device_str if torch.cuda.is_available() else "cpu")
 
     # transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
     transform = transforms.Compose([transforms.ToTensor()])
-    dataset = PairedNoisyDataset(data_dir, transform=transform, crop_size=(64, 64))
-    loader = DataLoader(dataset, batch_size=4, shuffle=True, drop_last=True, num_workers=4, pin_memory=True)
 
     denoiser = DnCNN(in_ch=3).to(device)
     translator = SimpleUNet(in_ch=3, out_ch=3).to(device)
@@ -158,15 +160,22 @@ def run(
     out_dir.mkdir(exist_ok=True, parents=True)
 
     print("Pretraining denoiser:")
-    pretrain_loder = DataLoader(dataset, batch_size=4, shuffle=True, drop_last=True, num_workers=4)
-    denoiser = pretrain_denoiser(denoiser, pretrain_loder, device, epochs=epochs_denoiser, lr=1e-3, out_dir=out_dir)
+    train_denoiser_loader, test_denoiser_loader = create_dataloader(
+        data_dir, batch_size=4, transform=transform, crop_size=crop_size, test_size=0.2, noise_level=0.08
+    )
+    denoiser = pretrain_denoiser(
+        denoiser, train_denoiser_loader, device, epochs=epochs_denoiser, lr=1e-3, out_dir=out_dir
+    )
 
     print("Training translator:")
+    train_translator_loader, test_translator_loader = create_dataloader(
+        data_dir, batch_size=4, transform=transform, crop_size=crop_size, test_size=0.2
+    )
     translator = train_translator(
         translator,
         denoiser,
         discriminator,
-        loader,
+        train_translator_loader,
         device,
         epochs=epochs_translator,
         lr=1e-4,
@@ -179,4 +188,4 @@ def run(
 
 
 if __name__ == "__main__":
-    run(data_dir=Path("data/CC15"), device_str="cpu", epochs_denoiser=5, epochs_translator=5)
+    run(data_dir=Path("data/CC15"), device_str="cpu", crop_size=(64, 64), epochs_denoiser=5, epochs_translator=5)
