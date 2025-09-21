@@ -1,6 +1,6 @@
 [project]
 name = "noise-translator"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -11,8 +11,21 @@ dependencies = [
     "tqdm>=4.67.1",
 ]
 
+[project.scripts]
+tb-export = "noise_translator.tb_event_exporter:main"
+
 [dependency-groups]
 dev = ["ipython>=9.5.0", "pyright>=1.1.405", "ruff>=0.13.1"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/noise_translator/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/noise_translator"]
 
 [tool.ruff]
 line-length = 120
@@ -60,8 +73,13 @@ ignore = [
 max-args = 10
 max-statements = 60
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["PLR2004", "S101"]
+"scripts/**/*.py" = ["INP001"]
+
 [tool.ruff.lint.isort]
 order-by-type = false
+known-first-party = ["noise_translator"]
 
 [tool.ruff.lint.flake8-quotes]
 docstring-quotes = "double"
@@ -70,7 +88,7 @@ docstring-quotes = "double"
 convention = "google"
 
 [tool.pyright]
-pythonVersion = "3.8"
+pythonVersion = "3.11"
 pythonPlatform = "Linux"
 typeCheckingMode = "strict"
 reportUnnecessaryComparison = "warning"
