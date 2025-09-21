@@ -54,6 +54,8 @@ ignore = [
     "D213",    # multi-line-summary-second-line (incompatible with D212)
     "DTZ005",  # Timezone stuff
     "ERA001",  # Found commented-out code
+    "FBT001",  # Rule checking for mutable default arguments. In many cases, using mutable default arguments is perfectly fine, so this rule is ignored to reduce noise.
+    "FBT002",  # Rule checking for mutable module-level variables. In many cases, using mutable module-level variables is perfectly fine, so this rule is ignored to reduce noise.
     "FBT003",  # Boolean positional value in function call
     "FIX",     # Rule checking for TODO, FIXME, etc... These are not always meant to be resolved straightaway, hence ignoring these rules.
     "G004",    # Rule checking for uses of f-strings to format logging messages. In general we do not have complex logging setups, nor do we really care about any potential time savings. Hence the choice to prioritize the readability and user friendliness of f-strings over proper logging practices.
