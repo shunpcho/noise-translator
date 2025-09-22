@@ -10,6 +10,7 @@ from tqdm import tqdm
 
 from noise_translator.data.data_loader import create_dataloader
 from noise_translator.models.models import DnCNN, PatchDiscriminator, SimpleUNet
+from noise_translator.models.NAFNet_arch import NAFNet
 from noise_translator.utils.utils import save_sample_grid, weights_init
 
 
@@ -220,6 +221,28 @@ def train_translator(
     return translator
 
 
+def set_translator(model: str) -> nn.Module:
+    if model == "unet":
+        translator = SimpleUNet(in_ch=3, out_ch=3)
+    elif model == "nafnet":
+        img_channel = 3
+        width = 32
+        enc_blks = [2, 2, 4, 8]
+        middle_blk_num = 12
+        dec_blks = [2, 2, 2, 2]
+        translator = NAFNet(
+            img_channel=img_channel,
+            width=width,
+            middle_blk_num=middle_blk_num,
+            enc_blk_nums=enc_blks,
+            dec_blk_nums=dec_blks,
+        )
+    else:
+        msg = f"Model {model} is not implemented."
+        raise NotImplementedError(msg)
+    return translator
+
+
 def run(
     data_dir: Path = Path("data"),
     device_str: str = "cuda",
@@ -235,7 +258,7 @@ def run(
     transform = transforms.Compose([transforms.ToTensor()])
 
     denoiser = DnCNN(in_ch=3).to(device)
-    translator = SimpleUNet(in_ch=3, out_ch=3).to(device)
+    translator = set_translator("nafnet").to(device)
     discriminator = PatchDiscriminator(in_ch=3).to(device)
 
     denoiser.apply(weights_init)
