@@ -36,12 +36,10 @@ class PairedNoisyDataset(Dataset):
     def __len__(self) -> int:
         return len(self.clean_files)
 
-    def __getitem__(self, idx: int) -> tuple[Image.Image, Image.Image]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         clean_path = self.clean_files[idx]
-
         if self.noise_level > 0:
             clean_img: Image.Image = Image.open(clean_path).convert("RGB")
-
             if self.crop_size is not None:
                 i: int
                 j: int
@@ -52,7 +50,6 @@ class PairedNoisyDataset(Dataset):
             seed = torch.randint(0, 2**32, (1,)).item()
             torch.manual_seed(seed)
             clean_img = self.transform(clean_img)
-
             stds = torch.rand(1) * self.noise_level
             noise = torch.randn_like(clean_img) * stds / 255.0
             noisy_img = clean_img + noise
@@ -97,7 +94,6 @@ def create_dataloader(
 ) -> DataLoader:
     img_files = sorted(root_data.glob("*_mean.png"))
     train_files, test_files = train_test_split(img_files, test_size=test_size, random_state=42)
-
     train_dataset = PairedNoisyDataset(train_files, transform=transform, crop_size=crop_size, noise_level=noise_level)
     test_dataset = PairedNoisyDataset(test_files, transform=transform, crop_size=crop_size, noise_level=noise_level)
 
@@ -107,7 +103,6 @@ def create_dataloader(
         shuffle=True,
         num_workers=num_workers,
         pin_memory=pin_memory,
-        drop_last=True,
     )
     test_loader = DataLoader(
         test_dataset,
@@ -115,6 +110,5 @@ def create_dataloader(
         shuffle=False,
         num_workers=num_workers,
         pin_memory=pin_memory,
-        drop_last=True,
     )
     return train_loader, test_loader
