@@ -32,7 +32,7 @@ def pretrain_denoiser(
         pbar = tqdm(train_loader, desc=f"Denoiser Pretrain {epoch:3}/{epochs}")
         running = 0.0
         for noisy, clean in pbar:
-            noisy = clean.to(device)
+            noisy = noisy.to(device)
             clean = clean.to(device)
 
             out_img = denoiser(noisy)
