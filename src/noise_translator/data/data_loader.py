@@ -66,7 +66,7 @@ class PairedNoisyDataset(Dataset):
             left: int
             height: int
             width: int
-            top, left, width, height = transforms.RandomCrop.get_params(clean_img, output_size=self.crop_size)
+            top, left, height, width = transforms.RandomCrop.get_params(clean_img, output_size=self.crop_size)
             clean_img: Image.Image = f.crop(clean_img, top, left, height, width)
             noisy_img: Image.Image = f.crop(noisy_img, top, left, height, width)
 
