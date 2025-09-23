@@ -12,6 +12,8 @@
 }
 """
 
+import math
+
 import torch
 import torch.nn.functional as f
 from torch import nn
@@ -351,8 +353,8 @@ if __name__ == "__main__":
     with torch.no_grad():
         inp_shape = (3, 256, 256)
 
-        from ptflops import get_model_complexity_info
-        from torchsummary import summary as summary_
+        from ptflops import get_model_complexity_info  # pyright: ignore[reportMissingImports]
+        from torchsummary import summary as summary_  # pyright: ignore[reportMissingImports]
 
         summary_(net.cuda(), (3, 256, 256), batch_size=1)
 

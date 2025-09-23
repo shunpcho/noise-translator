@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import torch
 from torch import nn
-from torch.utils.data import DataLoader
 from torchvision import transforms
 from tqdm import tqdm
+
+if TYPE_CHECKING:
+    from torch.utils.data import DataLoader
 
 from noise_translator.data.data_loader import create_dataloader
 from noise_translator.models.models import DnCNN, PatchDiscriminator, SimpleUNet
@@ -120,9 +123,9 @@ def train_translator(
     pbar = tqdm(total=iteration, desc="Translator Train")
 
     while step < iteration:
-        for clean, real_noisy in train_loader:
-            clean = clean.to(device)
+        for real_noisy, clean in train_loader:
             real_noisy = real_noisy.to(device)
+            clean = clean.to(device)
 
             translated = torch.sigmoid(translator(real_noisy))
             denoised = denoiser(translated)
@@ -171,9 +174,9 @@ def train_translator(
                 val_loss = 0.0
                 pabar_eval = tqdm(total=len(test_loader), desc="Translator Eval")
                 with torch.no_grad():
-                    for clean_val, real_noisy_val in test_loader:
-                        clean_val = clean_val.to(device)
+                    for real_noisy_val, clean_val in test_loader:
                         real_noisy_val = real_noisy_val.to(device)
+                        clean_val = clean_val.to(device)
                         translated_val = torch.sigmoid(translator(real_noisy_val))
                         denoised_val = denoiser(translated_val)
                         val_loss += l1(denoised_val, clean_val).item()
@@ -249,28 +252,36 @@ def run(
     crop_size: tuple[int, int] | None = None,
     iter_denoiser: int = 50,
     iter_translator: int = 50,
-    eval_iter_translator: int = 10,
     eval_iter_denoiser: int = 10,
+    eval_iter_translator: int = 10,
+    use_discriminator: bool = True,
 ) -> None:
+    """Main training pipeline."""
     device = torch.device(device_str if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
 
-    # transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+    # Prepare transforms
     transform = transforms.Compose([transforms.ToTensor()])
 
+    # Initialize models
     denoiser = DnCNN(in_ch=3).to(device)
     translator = set_translator("nafnet").to(device)
-    discriminator = PatchDiscriminator(in_ch=3).to(device)
+    discriminator = PatchDiscriminator(in_ch=3).to(device) if use_discriminator else None
 
+    # Initialize weights
     denoiser.apply(weights_init)
     translator.apply(weights_init)
-    discriminator.apply(weights_init)
+    if discriminator is not None:
+        discriminator.apply(weights_init)
 
+    # Create output directory
     out_dir = Path("results")
     out_dir.mkdir(exist_ok=True, parents=True)
 
-    print("Pretraining denoiser:")
+    # Pretrain denoiser
+    print("Pretraining denoiser...")
     train_denoiser_loader, test_denoiser_loader = create_dataloader(
-        data_dir, batch_size=4, transform=transform, crop_size=crop_size, test_size=0.2, noise_level=0.08
+        data_dir, batch_size=4, transform=transform, crop_size=crop_size, test_size=0.2
     )
     denoiser = pretrain_denoiser(
         denoiser,
@@ -283,7 +294,8 @@ def run(
         out_dir=out_dir,
     )
 
-    print("Training translator:")
+    # Train translator
+    print("Training translator...")
     train_translator_loader, test_translator_loader = create_dataloader(
         data_dir, batch_size=4, transform=transform, crop_size=crop_size, test_size=0.2
     )
@@ -306,4 +318,12 @@ def run(
 
 
 if __name__ == "__main__":
-    run(data_dir=Path("data/CC15"), device_str="cpu", crop_size=(64, 64))
+    run(
+        data_dir=Path("data/CC15"),
+        device_str="cpu",
+        crop_size=(64, 64),
+        iter_denoiser=100,
+        iter_translator=200,
+        eval_iter_denoiser=100,
+        eval_iter_translator=50,
+    )

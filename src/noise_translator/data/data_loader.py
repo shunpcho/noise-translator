@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import torch
@@ -12,6 +11,7 @@ from torchvision import transforms
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
 
 class PairedNoisyDataset(Dataset):
@@ -39,6 +39,7 @@ class PairedNoisyDataset(Dataset):
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         clean_path = self.clean_files[idx]
         if self.noise_level > 0:
+            # Add synthetic noise case
             clean_img: Image.Image = Image.open(clean_path).convert("RGB")
             if self.crop_size is not None:
                 i: int
@@ -56,7 +57,7 @@ class PairedNoisyDataset(Dataset):
             noisy_img = torch.clamp(noisy_img, 0.0, 1.0)
             return noisy_img, clean_img
 
-        noisy_path = clean__to_noisy(clean_path)
+        noisy_path = clean_to_noisy(clean_path)
         noisy_img: Image.Image = Image.open(noisy_path).convert("RGB")
         clean_img: Image.Image = Image.open(clean_path).convert("RGB")
 
@@ -69,6 +70,7 @@ class PairedNoisyDataset(Dataset):
             clean_img: Image.Image = f.crop(clean_img, i, j, h, w)
             noisy_img: Image.Image = f.crop(noisy_img, i, j, h, w)
 
+        # Generate consistent random crop and transformation
         seed = torch.randint(0, 2**32, (1,)).item()
         torch.manual_seed(seed)
         clean_img = self.transform(clean_img)
@@ -78,7 +80,7 @@ class PairedNoisyDataset(Dataset):
         return noisy_img, clean_img
 
 
-def clean__to_noisy(clean_path: Path) -> Path:
+def clean_to_noisy(clean_path: Path) -> Path:
     return clean_path.with_name(clean_path.name.replace("_mean", "_real"))
 
 
@@ -91,7 +93,7 @@ def create_dataloader(
     noise_level: float = 0.0,
     num_workers: int = 4,
     pin_memory: bool = True,
-) -> DataLoader:
+) -> tuple[DataLoader, DataLoader]:
     img_files = sorted(root_data.glob("*_mean.png"))
     train_files, test_files = train_test_split(img_files, test_size=test_size, random_state=42)
     train_dataset = PairedNoisyDataset(train_files, transform=transform, crop_size=crop_size, noise_level=noise_level)

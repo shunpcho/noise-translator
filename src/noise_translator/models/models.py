@@ -95,7 +95,7 @@ class DnCNN(nn.Module):
 
 
 class PatchDiscriminator(nn.Module):
-    def __init__(self, in_ch: int = 3, base: int = 64) -> None:
+    def __init__(self, in_ch: int = 3, base: int = 64) -> torch.Tensor:
         super().__init__()
         self.model = nn.Sequential(
             nn.Conv2d(in_ch, base, 4, 2, 1),

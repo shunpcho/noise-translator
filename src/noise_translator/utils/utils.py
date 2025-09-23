@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import torch
 from torch import nn
 from torchvision.utils import save_image  # type: ignore[import]
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
-def weights_init(m: nn.Conv2d | nn.Linear) -> None:
+
+def weights_init(m: nn.Module) -> None:
     if isinstance(m, (nn.Conv2d, nn.Linear)):
         nn.init.kaiming_normal_(m.weight)
         if getattr(m, "bias", None) is not None:
