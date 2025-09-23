@@ -306,7 +306,7 @@ class NAFNet(nn.Module):
         )
         mod_pad_h = h_padded - h if h % self.padder_size != 0 else 0
         mod_pad_w = w_padded - w if w % self.padder_size != 0 else 0
-        x = f.pad(x, (0, mod_pad_w, 0, mod_pad_h), "reflect")
+        x = f.pad(x, (0, mod_pad_w, 0, mod_pad_h), padding_mode="reflect")
         return x
 
 
