@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import torch
 from torch import nn
+from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
+from torchvision.utils import make_grid
 from tqdm import tqdm
 
 if TYPE_CHECKING:
@@ -14,6 +17,7 @@ if TYPE_CHECKING:
 from noise_translator.data.data_loader import create_dataloader
 from noise_translator.models.models import DnCNN, PatchDiscriminator, SimpleUNet
 from noise_translator.models.NAFNet_arch import NAFNet
+from noise_translator.utils.create_log import calculate_psnr, calculate_ssim, get_logger
 from noise_translator.utils.utils import save_sample_grid, weights_init
 
 
@@ -26,6 +30,8 @@ def pretrain_denoiser(
     lr: float = 1e-3,
     out_dir: Path = Path("results"),
     eval_iter: int = 1000,
+    writer: SummaryWriter | None = None,
+    logger: logging.Logger | None = None,
 ) -> nn.Module:
     optim = torch.optim.Adam(denoiser.parameters(), lr=lr)
     criterion = nn.MSELoss()
@@ -49,6 +55,15 @@ def pretrain_denoiser(
             loss.backward()
             optim.step()
 
+            if writer:
+                train_ssim = calculate_ssim(out_img, clean)
+                train_psnr = calculate_psnr(out_img, clean)
+                writer.add_scalar("Denoiser/train_loss", loss.item(), step)
+                writer.add_scalar("Denoiser/train_ssim", train_ssim, step)
+                writer.add_scalar("Denoiser/train_psnr", train_psnr, step)
+            if logger and step % 100 == 0:
+                logger.info(f"[Denoiser][Step {step}] Train Loss={loss.item():.6f}")
+
             step += 1
             pbar.update(1)
             pbar.set_postfix(train_loss=loss.item())
@@ -56,7 +71,8 @@ def pretrain_denoiser(
             # checkpoint & validation
             if step % eval_iter == 0 or step == iteration:
                 denoiser.eval()
-                val_loss = 0.0
+                val_loss, val_ssim, val_psnr = 0.0, 0.0, 0.0
+
                 pbar_eval = tqdm(total=len(test_loader), desc="Denoiser Eval")
                 with torch.no_grad():
                     for noisy_val, clean_val in test_loader:
@@ -64,11 +80,33 @@ def pretrain_denoiser(
                         clean_val = clean_val.to(device)
                         out_val = denoiser(noisy_val)
                         val_loss += criterion(out_val, clean_val).item()
+                        val_ssim += calculate_ssim(out_val, clean_val)
+                        val_psnr += calculate_psnr(out_val, clean_val)
 
                         pbar_eval.update(1)
                         pbar_eval.set_postfix(val_loss=val_loss)
+
                 val_loss /= len(test_loader)
+                val_ssim /= len(test_loader)
+                val_psnr /= len(test_loader)
+
                 pbar_eval.close()
+
+                if writer:
+                    writer.add_scalar("Denoiser/val_loss", val_loss, step)
+                    writer.add_scalar("Denoiser/val_ssim", val_ssim, step)
+                    writer.add_scalar("Denoiser/val_psnr", val_psnr, step)
+
+                    # sample image
+                    sample_noisy, sample_clean = noisy[:4], clean[:4]
+                    sample_out = denoiser(sample_noisy)
+                    grid = make_grid(torch.cat([sample_clean, sample_noisy, sample_out], dim=0), nrow=4)
+                    writer.add_image("Denoiser/samples", grid, step)
+
+                if logger:
+                    logger.info(
+                        f"[Denoiser][Step {step}] Val Loss={val_loss:.6f}, SSIM={val_ssim:.4f}, PSNR={val_psnr:.2f}"
+                    )
 
                 # save model
                 torch.save(
@@ -80,6 +118,14 @@ def pretrain_denoiser(
                     },
                     model_out_dir / f"denoiser_step{step}.pth",
                 )
+
+                # log tensorboard
+                if writer:
+                    sample_noisy = noisy[:4]
+                    sample_clean = clean[:4]
+                    sample_out = denoiser(sample_noisy)
+                    grid = make_grid(torch.cat([sample_clean, sample_noisy, sample_out], dim=0), nrow=4)
+                    writer.add_image("Denoiser/samples", grid, step)
 
                 denoiser.train()
 
@@ -103,6 +149,8 @@ def train_translator(
     lambda_gan: float = 0.1,
     out_dir: Path = Path("results"),
     eval_iter: int = 10,
+    writer: SummaryWriter | None = None,
+    logger: logging.Logger | None = None,
 ) -> nn.Module:
     optim_t = torch.optim.Adam(translator.parameters(), lr=lr)
     optim_d = torch.optim.Adam(dsc.parameters(), lr=lr) if dsc is not None else None
@@ -158,6 +206,7 @@ def train_translator(
                     gan=float(gan_loss_trans.detach()),
                     d=float(d_loss.detach()),
                 )
+
             else:
                 optim_t.zero_grad()
                 total_loss = lambda_recon * recon_loss
@@ -165,26 +214,68 @@ def train_translator(
                 optim_t.step()
                 pbar.set_postfix(recon=float(recon_loss.detach()))
 
+                # log to tensorboard
+                if writer:
+                    train_ssim = calculate_ssim(denoised, clean)
+                    train_psnr = calculate_psnr(denoised, clean)
+                    writer.add_scalar("Translator/train_loss", total_loss.item(), step)
+                    writer.add_scalar("Translator/train_ssim", train_ssim, step)
+                    writer.add_scalar("Translator/train_psnr", train_psnr, step)
+                    if dsc:
+                        writer.add_scalar("Translator/gan_loss", gan_loss_trans.item(), step)
+                        writer.add_scalar("Translator/d_loss", d_loss.item(), step)
+            if logger and step % 10 == 0:
+                logger.info(f"[Translator][Step {step}] Loss={total_loss.item():.6f}")
+
             step += 1
             pbar.update(1)
 
             # checkpoint & validation
             if step % eval_iter == 0 or step == iteration:
                 translator.eval()
-                val_loss = 0.0
+                val_loss, val_ssim, val_psnr = 0.0, 0.0, 0.0
                 pabar_eval = tqdm(total=len(test_loader), desc="Translator Eval")
                 with torch.no_grad():
                     for real_noisy_val, clean_val in test_loader:
-                        real_noisy_val = real_noisy_val.to(device)
-                        clean_val = clean_val.to(device)
+                        real_noisy_val, clean_val = real_noisy_val.to(device), clean_val.to(device)
                         translated_val = torch.sigmoid(translator(real_noisy_val))
                         denoised_val = denoiser(translated_val)
                         val_loss += l1(denoised_val, clean_val).item()
-
-                        pabar_eval.update(1)
-                        pabar_eval.set_postfix(val_loss=val_loss)
+                        val_ssim += calculate_ssim(denoised_val, clean_val)
+                        val_psnr += calculate_psnr(denoised_val, clean_val)
                 val_loss /= len(test_loader)
+                val_ssim /= len(test_loader)
+                val_psnr /= len(test_loader)
+
                 pabar_eval.close()
+
+                if writer:
+                    writer.add_scalar("Translator/val_loss", val_loss, step)
+                    writer.add_scalar("Translator/val_ssim", val_ssim, step)
+                    writer.add_scalar("Translator/val_psnr", val_psnr, step)
+
+                    # sample images
+                    sample_real_noisy = real_noisy[:4]
+                    sample_clean = clean[:4]
+                    sample_translated = torch.sigmoid(translator(sample_real_noisy))
+                    sample_denoised = denoiser(sample_translated)
+                    save_sample_grid(
+                        sample_clean,
+                        sample_real_noisy,
+                        sample_translated,
+                        sample_denoised,
+                        fig_out_dir / f"sample_step{step}.png",
+                        n=4,
+                    )
+                    grid = make_grid(
+                        torch.cat([sample_clean, sample_real_noisy, sample_translated, sample_denoised], dim=0), nrow=4
+                    )
+                    writer.add_image("Translator/samples", grid, step)
+
+                if logger:
+                    logger.info(
+                        f"[Translator][Step {step}] Val Loss={val_loss:.6f}, SSIM={val_ssim:.4f}, PSNR={val_psnr:.2f}"
+                    )
 
                 # save model checkpoint
                 torch.save(
@@ -212,6 +303,13 @@ def train_translator(
                         fig_out_dir / f"sample_step{step}.png",
                         n=4,
                     )
+
+                # log to tensorboard
+                if writer:
+                    grid = make_grid(
+                        torch.cat([sample_clean, sample_real_noisy, sample_translated, sample_denoised], dim=0), nrow=4
+                    )
+                    writer.add_image("Samples/clean_noisy_translated_denoised", grid, step)
 
                 translator.train()
                 if dsc is not None:
@@ -277,6 +375,9 @@ def run(
     # Create output directory
     out_dir = Path("results")
     out_dir.mkdir(exist_ok=True, parents=True)
+    logger, writer = get_logger(out_dir)
+
+    logger.info(f"Using device: {device}")
 
     # Pretrain denoiser
     print("Pretraining denoiser...")
@@ -292,6 +393,8 @@ def run(
         eval_iter=eval_iter_denoiser,
         lr=1e-3,
         out_dir=out_dir,
+        writer=writer,
+        # logger=logger,
     )
 
     # Train translator
@@ -312,6 +415,8 @@ def run(
         lambda_recon=1.0,
         lambda_gan=0.1,
         out_dir=out_dir,
+        writer=writer,
+        # logger=logger,
     )
 
     print("Dnoe. Check", out_dir)
@@ -324,6 +429,6 @@ if __name__ == "__main__":
         crop_size=(64, 64),
         iter_denoiser=100,
         iter_translator=200,
-        eval_iter_denoiser=100,
-        eval_iter_translator=50,
+        eval_iter_denoiser=10,
+        eval_iter_translator=10,
     )
