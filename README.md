@@ -23,3 +23,38 @@ Notes:
 
 Requirements:
 torch, torchvision, tqdm
+
+## Useage
+
+### Download dataset
+
+#### Setup sample dataset CC15
+
+`sh script/sample_dataset.sh download unzip`
+
+- First flag is to download if you need.
+- Second flag is to unzip downloaded dataset if you need.
+- Structure: `_ours` is ouput image. `_mean` is clean image. `_real` is noisy image.
+- There are 15 sets.
+
+```
+  data/CC15
+  |-- xxx_ours.png
+  |-- xxx_mean.png
+  |-- xxx_real.png
+  |-- yyy_ours.png
+  |-- yyy_mean.png
+  |-- yyy_real.png
+  :
+  :
+  `-- zzz_real.png
+```
+
+### Run
+
+`python src/noise_translator/train.py`
+
+### TODO
+
+- save log(step, optim, loss)
+- synth noise
