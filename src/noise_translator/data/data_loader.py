@@ -42,12 +42,12 @@ class PairedNoisyDataset(Dataset):
             # Add synthetic noise case
             clean_img: Image.Image = Image.open(clean_path).convert("RGB")
             if self.crop_size is not None:
-                i: int
-                j: int
-                w: int
-                h: int
-                i, j, h, w = transforms.RandomCrop.get_params(clean_img, output_size=self.crop_size)
-                clean_img: Image.Image = f.crop(clean_img, i, j, h, w)
+                top: int
+                left: int
+                height: int
+                width: int
+                top, left, height, width = transforms.RandomCrop.get_params(clean_img, output_size=self.crop_size)
+                clean_img: Image.Image = f.crop(clean_img, top, left, height, width)
             seed = torch.randint(0, 2**32, (1,)).item()
             torch.manual_seed(seed)
             clean_img = self.transform(clean_img)
@@ -62,13 +62,13 @@ class PairedNoisyDataset(Dataset):
         clean_img: Image.Image = Image.open(clean_path).convert("RGB")
 
         if self.crop_size is not None:
-            i: int
-            j: int
-            w: int
-            h: int
-            i, j, h, w = transforms.RandomCrop.get_params(clean_img, output_size=self.crop_size)
-            clean_img: Image.Image = f.crop(clean_img, i, j, h, w)
-            noisy_img: Image.Image = f.crop(noisy_img, i, j, h, w)
+            top: int
+            left: int
+            height: int
+            width: int
+            top, left, width, height = transforms.RandomCrop.get_params(clean_img, output_size=self.crop_size)
+            clean_img: Image.Image = f.crop(clean_img, top, left, height, width)
+            noisy_img: Image.Image = f.crop(noisy_img, top, left, height, width)
 
         # Generate consistent random crop and transformation
         seed = torch.randint(0, 2**32, (1,)).item()

@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 
 def weights_init(m: nn.Module) -> None:
-    if isinstance(m, (nn.Conv2d, nn.Linear)):
+    if isinstance(m, (nn.Conv2d, nn.Linear, nn.ConvTranspose2d)):
         nn.init.kaiming_normal_(m.weight)
         if getattr(m, "bias", None) is not None:
             nn.init.zeros_(m.bias)
@@ -30,5 +30,5 @@ def save_sample_grid(
     to_save = []
     for idx in range(min(n, batch_size)):
         to_save.extend([clean[idx], real_noisy[idx], translated[idx], denoised[idx]])
-    grid = torch.stack(to_save, dim=0)  # torch.cat → torch.stack
+    grid = torch.stack(to_save, dim=0)
     save_image(grid, save_path, nrow=4)
